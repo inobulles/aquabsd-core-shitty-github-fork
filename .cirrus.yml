@@ -1,8 +1,6 @@
 # $FreeBSD$
 
 compute_engine_instance:
-  # Image list available via
-  # gcloud compute images list --project freebsd-org-cloud-dev --no-standard-images
   platform: freebsd
   image_project: freebsd-org-cloud-dev
   image: freebsd-13-0-release-amd64
@@ -11,32 +9,28 @@ compute_engine_instance:
   disk: 40
 
 task:
-  matrix:
-  - name: World and kernel amd64 build and boot smoke test
-    env:
-      TARGET: amd64
-      TARGET_ARCH: amd64
-  - name: World and kernel arm64 build and boot smoke test
-    trigger_type: manual
-    env:
-      TARGET: arm64
-      TARGET_ARCH: aarch64
+  name: Build aquaBSD kernel for 'amd64' target
+  env:
+    TARGET: amd64
+    TARGET_ARCH: amd64
   timeout_in: 120m
-  install_script:
-  - sh .cirrus-ci/pkg-install.sh qemu llvm13
   setup_script:
   - uname -a
-  - df -m
+  - df -h
   - pkg --version
-  - pw useradd user
   - mkdir -p /usr/obj/$(pwd -P)
-  - chown user:user /usr/obj/$(pwd -P)
-  script:
-  - su user -c "make -j$(sysctl -n hw.ncpu) CROSS_TOOLCHAIN=llvm13 WITHOUT_TOOLCHAIN=yes buildworld buildkernel"
+  kernel_build_script:
+  - make -j$(sysctl -n hw.ncpu) WITHOUT_TOOLCHAIN=yes WITHOUT_LIB32=yes WITHOUT_TCSH=yes WITHOUT_FREEBSD_UPDATE=yes WITHOUT_PORTSNAP=yes WITHOUT_SENDMAIL=yes WITHOUT_TCP_WRAPPERS=yes WITHOUT_PAM_SUPPORT=yes WITHOUT_VT=yes WITHOUT_SVNLITE=yes WITHOUT_RESCUE=yes buildkernel
+  distribute_script:
+  - mkdir -p /usr/obj/$(pwd -P)/amd64.amd64/release/dist/
+  - make DISTDIR=/usr/obj/$(pwd -P)/amd64.amd64/release/dist/ -DNO_ROOT distributekernel
   package_script:
-  - su user -c "make CROSS_TOOLCHAIN=llvm13 WITHOUT_TOOLCHAIN=yes PKG_FORMAT=tar packages"
-  test_script:
-  - sh tools/boot/ci-qemu-test.sh
+  - make packagekernel DISTDIR=/usr/obj/$(pwd -P)/amd64.amd64/release/dist/
+  - mkdir .build/
+  - mv /usr/obj/$(pwd -P)/amd64.amd64/release/dist/kernel.txz .build/
   post_script:
-  - df -m
-  - du -m -s /usr/obj
+  - ls -l .build/
+  - df -h
+  - du -h -s /usr/obj
+  distribution_artifacts:
+    path: ".build/*"
